@@ -2,6 +2,7 @@ from flask import Flask, request, make_response, session, redirect, url_for, esc
 from flask_wtf.csrf import CSRFProtect
 from passlib.hash import sha256_crypt
 import subprocess, secrets
+from datetime import datetime
 
 ##Reference: http://www.rmunn.com/sqlalchemy-tutorial/tutorial.html
 from sqlalchemy import *
@@ -10,10 +11,11 @@ db = create_engine('sqlite:///spellcheckwebapp.db')
 metadata = MetaData(db)
 users = Table('users', metadata, autoload=True)
 queries = Table('queries', metadata, autoload=True)
+logins = Table('logins', metadata, autoload=True)
 iu = users.insert() #Create insert method for users table
 iq = queries.insert() #Create insert method for queries table
-
-USER = 'testtest' #set global variable USER
+il = logins.insert() #Create insert method for logins table
+ul = logins.update() #create update method for logins table
 
 app = Flask(__name__)
 #app.secret_key = 'lkkljafovlnkadflkjweoirls413dkl342'
@@ -24,8 +26,8 @@ app.config["SECRET_KEY"] = secrets.token_urlsafe(16)
 #reference: https://flask-wtf.readthedocs.io/en/stable/csrf.html
 csrf = CSRFProtect(app)
 
-#define a dictionary structure to hold active (registered) users
-active_users = {}
+logged_in_users = {} #Global dictionary to keep state of currently logged in users
+
 
 @app.after_request
 def add_security_headers(response):
@@ -100,13 +102,22 @@ def check_auth(username, password, phone):
         return render_template('auth_failure.html')
     #username exists, which means user registered and password and phone fields are non-empty
     else:
+        # record timestamp for login event
+        now = datetime.now()
+        date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
         #Compare the submitted password with the user's stored password hash
-        #if sha256_crypt.verify(password, active_users[username][0]):
         if sha256_crypt.verify(password, record.password):
-            #if phone == active_users[username][1]:
             if phone == record.twofa:
                 #reference: https://www.tutorialspoint.com/flask/flask_sessions.htm
                 session['username'] = username
+                #insert the record of user's successful login into the logins table
+                il.execute(user_id=record.id, login=date_time, logout='N/A', status='Login Success', reason='Correct Credentials')
+                #record the login id for this session
+                sl = logins.select(logins.c.login == date_time)
+                rsl = sl.execute()
+                login_record = rsl.fetchone()
+                login_id = login_record.login_id
+                logged_in_users[username] = login_id  #create an entry in the dictionary tracking currently logged in users
                 response = make_response('''
                 <html>
                 <head>
@@ -123,8 +134,12 @@ def check_auth(username, password, phone):
                 ''')
                 return response
             else:
+                #insert the record of user's failed login attempt into the logins table
+                il.execute(user_id=record.id, login=date_time, logout='N/A', status='Login Failure', reason='Incorrect 2fa')
                 return render_template('auth_failure.html')
         else:
+            #insert the record of user's failed login attempt into the logins table
+            il.execute(user_id=record.id, login=date_time, logout='N/A', status='Login Failure', reason='Incorrect Password')
             return render_template('auth_failure.html')
 
 @app.route('/spell_check', methods=['POST', 'GET'])
@@ -183,7 +198,6 @@ def history():
             return user_query_history(user)
 
 def user_query_history(user):
-    USER = user #set global variable to use in the display_query() function
     su = users.select(users.c.username == user)
     rsu = su.execute()
     record = rsu.fetchone()
@@ -196,7 +210,7 @@ def user_query_history(user):
                 <title>History</title>
                 </head>
                 <body>
-                <h1>Query history for user: ''' + USER + '''</h1><br>
+                <h1>Query history for user: ''' + user + '''</h1><br>
                 <p id="numqueries">Total number of queries made: ''' + str(len(query_records)) + '</p><br>'
     for row in query_records:
         resp = resp + '<p id="query' + str(row.query_id) + '"><a href="/history/query' + str(row.query_id) + '">Query' + str(row.query_id) + '</a></p>'
@@ -209,16 +223,84 @@ def user_query_history(user):
 
 @app.route('/history/query<query_id>')
 def display_query(query_id):
+    #there is a vulnerability here - you don't have to be logged in to request a query - need to fix
     sq = queries.select(queries.c.query_id == query_id)
     rsq = sq.execute()
     record = rsq.fetchone()
     return render_template('query_display.html', query_id = query_id, query = record.query, response = record.response)
 
+@app.route('/login_history', methods=['POST', 'GET'])
+def login_history():
+    if request.method == 'GET':
+        if 'username' in session:
+            if session['username'] == 'admin':
+                return render_template('admin_login.html')
+            else:
+                return render_template('unauthorized.html')
+        else:
+            return render_template('login_failure.html')
+    elif request.method == 'POST':
+        user = request.form['uname']
+        su = users.select(users.c.username == user)
+        rs = su.execute()
+        record = rs.fetchone()
+        if record is None:
+            resp = '''
+            <html>
+                <head>
+                    <title>No such user</title>
+                    </head>
+                    <body>
+                    <h1>This user does not exist</h1>
+                    <p><a href="/spell_check">Spell check</a></p>
+                    <p><a href="/history">User query history</a></p>
+                    <p><a href="/login_history">User login history</a></p>
+                    <p><a href="/logout">Log out</a></p>
+                    </body>
+                </html>
+            '''
+            return resp
+        else:
+            return user_login_history(user)
 
+def user_login_history(user):
+    #The next three lines get the record for the user from the users table, so that we can then look up the user id for this user
+    su = users.select(users.c.username == user)
+    rsu = su.execute()
+    record = rsu.fetchone()
+    #Select login history for this user id
+    sl = logins.select(logins.c.user_id == record.id)
+    rsl = sl.execute()
+    login_records = rsl.fetchall()
+    resp = '''
+                <html>
+                <head>
+                <title>History</title>
+                </head>
+                <body>
+                <h1>Login history for user: ''' + user + '''</h1><br>
+                <p id="numlogins">Total number of login events: ''' + str(len(login_records)) + '''</p><br>
+                <ul>'''
+    for row in login_records:
+        resp = resp + '<li id="login' + str(row.login_id) + '"><id=login' + str(row.login_id) + '">Login: ' + str(row.login) + '  ||  Logout: ' + str(row.logout) + '  ||  Status: ' + str(row.status) + '  ||  Reason: ' + str(row.reason) + '</li>'
+    resp = resp + '''
+                </ul>
+                <br><br><p><a href="/history">User query history</a></p>
+                <p><a href="/login_history">User login history</a></p>
+                <br><p><a href="/logout">Log out</a></p>
+                </body>
+                </html>
+                '''
+    return resp
 
 #Log out user and delete session cookie
 @app.route('/logout')
 def logout():
+    now = datetime.now()
+    date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
+    #update method to update the record in the logins table that matches the login_id stored for the currently logged in user
+    ul = logins.update(logins.c.login_id == logged_in_users[session['username']])
+    ul.execute(logout=date_time)
     session.pop('username', None)
     return redirect((url_for('index')))
 
