@@ -18,6 +18,8 @@ il = logins.insert() #Create insert method for logins table
 ul = logins.update() #create update method for logins table
 
 app = Flask(__name__)
+#app.secret_key = 'lkkljafovlnkadflkjweoirls413dkl342'
+#app.config["SECRET_KEY"] = "lkkljafovlnkadflkjweoirls413dkl342"
 app.config["SECRET_KEY"] = secrets.token_urlsafe(16)
 
 #use built-in CSRF protection from Flask-WTF extention
@@ -25,6 +27,7 @@ app.config["SECRET_KEY"] = secrets.token_urlsafe(16)
 csrf = CSRFProtect(app)
 
 logged_in_users = {} #Global dictionary to keep state of currently logged in users
+
 
 @app.after_request
 def add_security_headers(response):
@@ -79,10 +82,13 @@ def register_user(username, password_hash, phone):
     su = users.select(users.c.username == username)  # Create select method for users table
     rs = su.execute()
     record = rs.fetchone()
+    #if username in active_users:
+
     #Check to see if a user record with this username already exists
     if record is not None:
         return render_template('username_not_available.html', username = username)
     else:
+        #active_users[username] = [password_hash, phone]
         iu.execute(username=username, password=password_hash, twofa=phone)
         return render_template('registration_success.html', username = username)
 
@@ -90,7 +96,7 @@ def check_auth(username, password, phone):
     su = users.select(users.c.username == username)
     rs = su.execute()
     record = rs.fetchone()
-    #if username not in Users table:
+    #if username not in active_users:
     if record is None:
         #direct user to registration form if username does not exist
         return render_template('auth_failure.html')
@@ -217,31 +223,11 @@ def user_query_history(user):
 
 @app.route('/history/query<query_id>')
 def display_query(query_id):
-    #Check whether the user is logged in
-    if 'username' in session:
-        #If the logged in user is admin, they can see any query
-        if session['username'] == 'admin':
-            sq = queries.select(queries.c.query_id == query_id)
-            rsq = sq.execute()
-            query_record = rsq.fetchone()
-            return render_template('query_display.html', query_id=query_id, query=query_record.query, response=query_record.response)
-        #If the logged in user is not admin, they should only be able to see their own queries, but not other users' queries
-        else:
-            user = session['username']
-            #Select the user's record from the Users table, so that we can get that user's id
-            su = users.select(users.c.username == user)
-            rsu = su.execute()
-            user_record = rsu.fetchone()
-            #Select the requested query from the Queries table
-            sq = queries.select(queries.c.query_id == query_id)
-            rsq = sq.execute()
-            query_record = rsq.fetchone()
-            if query_record.user_id == user_record.id:
-                return render_template('query_display.html', query_id=query_id, query=query_record.query, response=query_record.response)
-            else:
-                return render_template('unauthorized.html')
-    else:
-        return render_template('unauthorized.html')
+    #there is a vulnerability here - you don't have to be logged in to request a query - need to fix
+    sq = queries.select(queries.c.query_id == query_id)
+    rsq = sq.execute()
+    record = rsq.fetchone()
+    return render_template('query_display.html', query_id = query_id, query = record.query, response = record.response)
 
 @app.route('/login_history', methods=['POST', 'GET'])
 def login_history():
