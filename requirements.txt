@@ -1,1 +1,4 @@
 Flask, request, make_response, session, redirect, url_for
+flask_wtf 
+pyopenssl 
+passlib
