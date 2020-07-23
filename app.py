@@ -207,8 +207,8 @@ def user_query_history(user):
                 <h1>Query history for user: ''' + user + '''</h1><br>
                 <p id="numqueries">Total number of queries made: ''' + str(len(query_records)) + '</p><br>'
     for row in query_records:
-        #resp = resp + '<p id="query' + str(row.query_id) + '"><a href="/history/query' + str(row.query_id) + '">Query' + str(row.query_id) + '</a></p>'
-        resp = resp + '<p id="query' + str(row.query_id) + '"><a href="/history/' + str(row.query_id) + '">Query' + str(row.query_id) + '</a></p>'
+        resp = resp + '<p id="query' + str(row.query_id) + '"><a href="/history/query' + str(row.query_id) + '">Query' + str(row.query_id) + '</a></p>'
+        #resp = resp + '<p id="query' + str(row.query_id) + '"><a href="/history/' + str(row.query_id) + '">Query' + str(row.query_id) + '</a></p>'
     resp = resp + '''
                 <br><br><p><a href="/logout">Log out</a></p>
                 </body>
@@ -216,8 +216,8 @@ def user_query_history(user):
                 '''
     return resp
 
-#@app.route('/history/query<query_id>')
-@app.route('/history/<query_id>')
+@app.route('/history/query<query_id>')
+#@app.route('/history/<query_id>')
 def display_query(query_id):
     #Check whether the user is logged in
     if 'username' in session:
