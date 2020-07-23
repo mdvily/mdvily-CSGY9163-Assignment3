@@ -227,7 +227,7 @@ def display_query(query_id):
             rsq = sq.execute()
             query_record = rsq.fetchone()
             if query_record is not None:
-                return render_template('query_display.html', query_id=query_id, query=query_record.query, response=query_record.response)
+                return render_template('query_display.html', query_id=query_id, username='admin', query=query_record.query, response=query_record.response)
             else:
                 return render_template('unauthorized.html')
         #If the logged in user is not admin, they should only be able to see their own queries, but not other users' queries
@@ -243,7 +243,7 @@ def display_query(query_id):
             query_record = rsq.fetchone()
             if query_record is not None:
                 if query_record.user_id == user_record.id:
-                    return render_template('query_display.html', query_id=query_id, query=query_record.query, response=query_record.response)
+                    return render_template('query_display.html', query_id=query_id, username=user, query=query_record.query, response=query_record.response)
                 else:
                     return render_template('unauthorized.html')
             else:
