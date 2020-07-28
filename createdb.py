@@ -5,7 +5,6 @@ from sqlalchemy import *
 db = create_engine('sqlite:///spellcheckwebapp.db')
 
 metadata = MetaData(db)
-
 users = Table('users', metadata,
     Column('id', Integer, primary_key=True),
     Column('username', String(40)),
@@ -21,3 +20,15 @@ queries = Table('queries', metadata,
     Column('response', String),
 )
 queries.create()
+
+logins = Table('logins', metadata,
+    Column('login_id', Integer, primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id')),
+    Column('login', String),
+    Column('logout', String),
+    Column('status', String),
+    Column('reason', String)
+)
+logins.create()
+
+
